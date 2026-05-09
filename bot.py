@@ -1020,21 +1020,27 @@ async def снаряжение(interaction: discord.Interaction, действи�
 # ОУ
 # ==========================================
 @bot.tree.command(name="оу", description="Выдать Очки Улучшений")
-@app_commands.describe(количество="Сколько О.У. выдать")
-async def оу(interaction: discord.Interaction, количество: int):
+@app_commands.describe(игрок="Кому выдать (если не указано — себе)", количество="Сколько О.У. выдать")
+async def оу(interaction: discord.Interaction, количество: int, игрок: discord.Member = None):
     персонажи = load_characters()
-    автор_id = str(interaction.user.id)
+
+    # Определяем цель
+    if игрок is None:
+        цель = interaction.user
+    else:
+        цель = игрок
+
+    автор_id = str(цель.id)
 
     if автор_id not in персонажи:
-        await interaction.response.send_message(f"`[ERR]` Создай персонажа!", ephemeral=True)
+        await interaction.response.send_message(f"`[ERR]` У {цель.mention} нет персонажа!", ephemeral=True)
         return
 
     p = персонажи[автор_id]
     p['оу'] += количество
     save_characters(персонажи)
 
-    await interaction.response.send_message(f"`[ОУ]` +{количество} О.У. Всего: **{p['оу']}** О.У.")
-
+    await interaction.response.send_message(f"`[ОУ]` +{количество} О.У. для {цель.mention}. Всего: **{p['оу']}** О.У.")
 
 # ==========================================
 # ЭДДИ
