@@ -59,6 +59,12 @@ def load_armor():
             return json.load(f)
     return {}
 
+def load_cyberware():
+    if os.path.exists("cyberware.json"):
+        with open("cyberware.json", 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return {}
+
 # ==========================================
 # ХАРАКТЕРИСТИКИ
 # ==========================================
@@ -183,6 +189,14 @@ async def автодополнение_брони(interaction: discord.Interacti
     подходящие = [n for n in все if current.lower() in n.lower()]
     return [app_commands.Choice(name=n, value=n) for n in подходящие[:25]]
 
+async def автодополнение_имплантов(interaction: discord.Interaction, current: str):
+    шаблоны = load_cyberware()
+    все = list(шаблоны.keys())
+    if not current:
+        return [app_commands.Choice(name=n, value=n) for n in все[:25]]
+    подходящие = [n for n in все if current.lower() in n.lower()]
+    return [app_commands.Choice(name=n, value=n) for n in подходящие[:25]]
+
 # ==========================================
 # СИНХРОНИЗАЦИЯ
 # ==========================================
@@ -256,6 +270,14 @@ async def персонаж(interaction: discord.Interaction, действие: s
                 броня_стр.append(f"🛡️ {слот}: **{item['название'].title()}** (защита: {item['шаблон']['защита']})")
         if броня_стр:
             embed.add_field(name="`[ARM]` Броня", value='\n'.join(броня_стр), inline=True)
+        # Киберимпланты
+        уст_имп = p.get('установлено_импланты', {})
+        имп_стр = []
+        for слот, импланты in уст_имп.items():
+            for имп in импланты:
+                имп_стр.append(f"⚡ {слот}: **{имп['название'].title()}** — {имп['шаблон']['эффект']}")
+        if имп_стр:
+            embed.add_field(name="`[CYB]` Киберимпланты", value='\n'.join(имп_стр), inline=True)
         if человечность < 0:
             embed.add_field(name="`[PSY]` Статус", value="**НЕКОНТРОЛИРУЕМЫЙ КИБЕРПСИХ**\n*Управление невозможно.*", inline=False)
         elif эмпатия == 0:
@@ -283,7 +305,15 @@ async def персонаж(interaction: discord.Interaction, действие: s
             "имя": имя_персонажа, "оу": 0, "эдди": 1000,
             "статы": {"интеллект": 1, "сила воли": 1, "харизма": 1, "эмпатия": 1, "техника": 1, "реакция": 1, "удача": 1, "телосложение": 1, "ловкость": 1, "скорость": 1},
             "навыки": {}, "удача_текущая": 1, "удача_последняя_трата": None, "человечность": 10, "базовая_эмпатия": 1,
-            "импланты": [], "снаряжение": [], "надетое_снаряжение": [], "оружие": [], "руки": {"правая": None, "левая": None}, "броня": [], "надето_броня": {"голова": None, "тело": None}
+            "снаряжение": [], "надетое_снаряжение": [], "оружие": [], "руки": {"правая": None, "левая": None}, "быстрый_доступ": [],
+            "броня": [], "надето_броня": {"голова": None, "тело": None},
+            "киберимпланты": [],
+            "установлено_импланты": {
+                "стилевые": [], "нейронные": [], "оптика_правая": [], "оптика_левая": [],
+                "аудио": [], "внутренние": [], "внешние": [],
+                "рука_правая": [], "рука_левая": [], "нога_правая": [], "нога_левая": []
+            },
+            "открытые_слоты": {},
         }
         save_characters(персонажи)
         await interaction.response.send_message(f"`[SYS]` ✅ Персонаж **{имя_персонажа}** создан для {игрок.mention}!")
@@ -570,45 +600,6 @@ async def бросок(interaction: discord.Interaction, навык: str, уда
         f"{взрыв_текст}\n║ Итого: **{результат}**\n╚═══ {тип} ═══╝"
     )
 
-# ==========================================
-# ИМПЛАНТ
-# ==========================================
-@bot.tree.command(name="имплант", description="Управление имплантами")
-@app_commands.describe(действие="Что сделать", название="Название")
-@app_commands.choices(действие=[
-    app_commands.Choice(name="список", value="список"),
-    app_commands.Choice(name="добавить", value="добавить"),
-    app_commands.Choice(name="удалить", value="удалить"),
-])
-async def имплант(interaction: discord.Interaction, действие: str, название: str = None):
-    персонажи = load_characters()
-    автор_id = str(interaction.user.id)
-    if автор_id not in персонажи:
-        await interaction.response.send_message("`[ERR]` Создай персонажа!", ephemeral=True)
-        return
-    p = персонажи[автор_id]
-    if действие == "список":
-        if p['импланты']:
-            await interaction.response.send_message(f"`[IMPL]` {p['имя']}:\n" + '\n'.join([f"◆ {i}" for i in p['импланты']]))
-        else:
-            await interaction.response.send_message(f"`[INFO]` Нет имплантов.")
-    elif действие == "добавить":
-        if not название:
-            await interaction.response.send_message("`[ERR]` Укажи название!", ephemeral=True)
-            return
-        p['импланты'].append(название)
-        save_characters(персонажи)
-        await interaction.response.send_message(f"`[SYS]` **{название}** установлен!")
-    elif действие == "удалить":
-        if not название:
-            await interaction.response.send_message("`[ERR]` Укажи название!", ephemeral=True)
-            return
-        if название in p['импланты']:
-            p['импланты'].remove(название)
-            save_characters(персонажи)
-            await interaction.response.send_message(f"`[SYS]` **{название}** извлечён.")
-        else:
-            await interaction.response.send_message("`[ERR]` Не найден.", ephemeral=True)
 
 # ==========================================
 # СНАРЯЖЕНИЕ
@@ -712,18 +703,27 @@ async def выдать_снаряжение(interaction: discord.Interaction, и
 # ==========================================
 @bot.tree.command(name="оружие", description="Управление оружием")
 @app_commands.autocomplete(предмет=автодополнение_оружия)
-@app_commands.describe(действие="Что сделать", номер="Номер оружия (для продажи)", предмет="Название (для покупки)", качество="Качество")
+@app_commands.describe(действие="Что сделать", номер="Номер оружия", предмет="Название (для покупки)", качество="Качество", рука="В какую руку")
 @app_commands.choices(действие=[
     app_commands.Choice(name="список", value="список"),
-    app_commands.Choice(name="продать", value="продать"),
     app_commands.Choice(name="купить", value="купить"),
+    app_commands.Choice(name="продать", value="продать"),
+    app_commands.Choice(name="экипировать", value="экипировать"),
+    app_commands.Choice(name="убрать", value="убрать"),
+    app_commands.Choice(name="в быстрый доступ", value="в_бд"),
+    app_commands.Choice(name="из быстрого доступа", value="из_бд"),
 ])
 @app_commands.choices(качество=[
     app_commands.Choice(name="низкое (-1, ×0.5)", value="низкое"),
     app_commands.Choice(name="обычное", value="обычное"),
     app_commands.Choice(name="высокое (+1, ×1.5)", value="высокое"),
 ])
-async def оружие(interaction: discord.Interaction, действие: str, номер: int = None, предмет: str = None, качество: str = "обычное"):
+@app_commands.choices(рука=[
+    app_commands.Choice(name="правая", value="правая"),
+    app_commands.Choice(name="левая", value="левая"),
+    app_commands.Choice(name="обе", value="обе"),
+])
+async def оружие(interaction: discord.Interaction, действие: str, номер: int = None, предмет: str = None, качество: str = "обычное", рука: str = "правая"):
     персонажи = load_characters()
     автор_id = str(interaction.user.id)
     if автор_id not in персонажи:
@@ -731,35 +731,50 @@ async def оружие(interaction: discord.Interaction, действие: str, 
         return
     p = персонажи[автор_id]
     моды = {"низкое": {"урон": -1, "цена": 0.5, "зн": "⬇️"}, "обычное": {"урон": 0, "цена": 1.0, "зн": "➖"}, "высокое": {"урон": 1, "цена": 1.5, "зн": "⬆️"}}
-    
+    if 'руки' not in p: p['руки'] = {"правая": None, "левая": None}
+    if 'быстрый_доступ' not in p: p['быстрый_доступ'] = []
+    сп = p.get('оружие', [])
+
+    # Вспомогательная функция: индекс оружия в быстром доступе
+    def индекс_в_бд(номер_оружия):
+        for i, idx in enumerate(p['быстрый_доступ']):
+            if idx == номер_оружия - 1:
+                return i
+        return -1
+
     if действие == "список":
-        сп = p.get('оружие', [])
+        строки = ["**🔫 Оружие:**"]
         if сп:
-            строки = ["**🔫 Оружие:**"]
             for i, о in enumerate(сп, 1):
                 ш = о['шаблон']; к = о.get('качество', 'обычное')
                 обв = о.get('обвесы', {})
                 с1, с2 = обв.get('слот1'), обв.get('слот2')
                 обв_стр = f" [{с1 or '—'}|{с2 or '—'}]" if (с1 or с2) else ""
-                строки.append(f"{i}. {моды[к]['зн']} **{о['название'].title()}** ({к}) — {ш['урон']} ({ш['тип']}){обв_стр}")
-            await interaction.response.send_message('\n'.join(строки))
+                метка = ""
+                if i - 1 in p['быстрый_доступ']: метка = " ⚡БД"
+                if p['руки']['правая'] == i - 1 or p['руки']['левая'] == i - 1: метка = " ✋"
+                строки.append(f"{i}. {моды[к]['зн']} **{о['название'].title()}** ({к}) — {ш['урон']} ({ш['тип']}){обв_стр}{метка}")
         else:
-            await interaction.response.send_message("🔫 Пусто")
+            строки.append("пусто")
 
-    elif действие == "продать":
-        if not номер:
-            await interaction.response.send_message("`[ERR]` Укажи номер оружия из списка!", ephemeral=True)
-            return
-        сп = p.get('оружие', [])
-        if номер < 1 or номер > len(сп):
-            await interaction.response.send_message(f"`[ERR]` Оружие №{номер} не найдено! Всего: {len(сп)}.", ephemeral=True)
-            return
-        о = сп[номер - 1]
-        цена_продажи = int(о['шаблон']['цена'] * 0.1)
-        p['эдди'] += цена_продажи
-        сп.pop(номер - 1)
-        save_characters(персонажи)
-        await interaction.response.send_message(f"`[€$]` **{о['название'].title()}** продан за {цена_продажи} эдди. Баланс: **{p['эдди']}**")
+        строки.append("")
+        строки.append("**✋ В руках:**")
+        for r in ["правая", "левая"]:
+            idx = p['руки'][r]
+            if idx is not None and idx < len(сп):
+                строки.append(f"{r}: **{сп[idx]['название'].title()}**")
+            else:
+                строки.append(f"{r}: пусто")
+
+        строки.append("")
+        строки.append("**⚡ Быстрый доступ:**")
+        if p['быстрый_доступ']:
+            for idx in p['быстрый_доступ']:
+                if idx < len(сп):
+                    строки.append(f"• **{сп[idx]['название'].title()}**")
+        else:
+            строки.append("пусто")
+        await interaction.response.send_message('\n'.join(строки))
 
     elif действие == "купить":
         if not предмет:
@@ -784,6 +799,128 @@ async def оружие(interaction: discord.Interaction, действие: str, 
         p['оружие'].append({"название": предмет, "качество": качество, "шаблон": ш, "обвесы": {"слот1": None, "слот2": None}})
         save_characters(персонажи)
         await interaction.response.send_message(f"`[€$]` {м['зн']} **{предмет.title()}** ({качество}) куплен!\nУрон: {ш['урон']} | Цена: {цена} | Осталось: {p['эдди']}")
+
+    elif действие == "продать":
+        if not номер:
+            await interaction.response.send_message("`[ERR]` Укажи номер оружия из списка!", ephemeral=True)
+            return
+        if номер < 1 or номер > len(сп):
+            await interaction.response.send_message(f"`[ERR]` Оружие №{номер} не найдено!", ephemeral=True)
+            return
+        о = сп[номер - 1]
+        # Снимаем с рук
+        for r in ["правая", "левая"]:
+            if p['руки'][r] == номер - 1: p['руки'][r] = None
+        # Убираем из быстрого доступа
+        ибд = индекс_в_бд(номер)
+        if ибд >= 0: p['быстрый_доступ'].pop(ибд)
+        # Сдвигаем индексы
+        for r in ["правая", "левая"]:
+            if p['руки'][r] is not None and p['руки'][r] > номер - 1: p['руки'][r] -= 1
+        for i in range(len(p['быстрый_доступ'])):
+            if p['быстрый_доступ'][i] > номер - 1: p['быстрый_доступ'][i] -= 1
+        цена_продажи = int(о['шаблон']['цена'] * 0.1)
+        p['эдди'] += цена_продажи
+        сп.pop(номер - 1)
+        save_characters(персонажи)
+        await interaction.response.send_message(f"`[€$]` **{о['название'].title()}** продан за {цена_продажи} эдди. Баланс: **{p['эдди']}**")
+
+    elif действие == "экипировать":
+        if not сп:
+            await interaction.response.send_message("Нет оружия!", ephemeral=True)
+            return
+        if not номер:
+            await interaction.response.send_message("`[ERR]` Укажи номер оружия!", ephemeral=True)
+            return
+        if номер < 1 or номер > len(сп):
+            await interaction.response.send_message("`[ERR]` Не найден!", ephemeral=True)
+            return
+        оруж = сп[номер - 1]
+        рук = оруж['шаблон'].get('рук', 1)
+        # Убираем из быстрого доступа если было
+        ибд = индекс_в_бд(номер)
+        if ибд >= 0: p['быстрый_доступ'].pop(ибд)
+        if рук == 2:
+            if рука != "обе":
+                await interaction.response.send_message("`[ERR]` Двуручное — выбери «обе»!", ephemeral=True)
+                return
+            p['руки']['правая'] = номер - 1
+            p['руки']['левая'] = номер - 1
+        else:
+            if рука == "обе":
+                await interaction.response.send_message("`[ERR]` Одноручное — выбери руку!", ephemeral=True)
+                return
+            тек = p['руки'][рука]
+            if тек is not None and тек < len(сп) and сп[тек]['шаблон'].get('рук', 1) == 2:
+                p['руки']['правая'] = None
+                p['руки']['левая'] = None
+            p['руки'][рука] = номер - 1
+        save_characters(персонажи)
+        стр = []
+        for r in ["правая", "левая"]:
+            idx = p['руки'][r]
+            стр.append(f"{r}: **{сп[idx]['название'].title()}**" if idx is not None and idx < len(сп) else f"{r}: пусто")
+        await interaction.response.send_message(f"`[SYS]` {interaction.user.mention}:\n" + '\n'.join(стр))
+
+    elif действие == "убрать":
+        if not рука:
+            await interaction.response.send_message("`[ERR]` Укажи руку!", ephemeral=True)
+            return
+        if рука == "обе":
+            p['руки']['правая'] = None
+            p['руки']['левая'] = None
+        else:
+            тек = p['руки'][рука]
+            if тек is not None and тек < len(сп) and сп[тек]['шаблон'].get('рук', 1) == 2:
+                p['руки']['правая'] = None
+                p['руки']['левая'] = None
+            else:
+                p['руки'][рука] = None
+        save_characters(персонажи)
+        await interaction.response.send_message(f"`[SYS]` {interaction.user.mention} убрал оружие ({рука}).")
+
+    elif действие == "в_бд":
+        if not номер:
+            await interaction.response.send_message("`[ERR]` Укажи номер оружия!", ephemeral=True)
+            return
+        if номер < 1 or номер > len(сп):
+            await interaction.response.send_message("`[ERR]` Не найден!", ephemeral=True)
+            return
+        # Проверяем, не в руках ли уже
+        for r in ["правая", "левая"]:
+            if p['руки'][r] == номер - 1:
+                await interaction.response.send_message("`[ERR]` Сначала убери оружие из рук!", ephemeral=True)
+                return
+        # Проверяем лимит быстрого доступа
+        тек_рук = sum(1 for idx in p['быстрый_доступ'] if idx < len(сп) and сп[idx]['шаблон'].get('рук', 1) == 2)
+        тек_одноруч = len(p['быстрый_доступ']) - тек_рук
+        рук = сп[номер - 1]['шаблон'].get('рук', 1)
+        if рук == 2:
+            if p['быстрый_доступ']:
+                await interaction.response.send_message("`[ERR]` Быстрый доступ занят! Максимум 1 двуручное.", ephemeral=True)
+                return
+        else:
+            if тек_рук > 0 or тек_одноруч >= 2:
+                await interaction.response.send_message("`[ERR]` Быстрый доступ заполнен! Максимум: 1 двуручное или 2 одноручных.", ephemeral=True)
+                return
+        if номер - 1 in p['быстрый_доступ']:
+            await interaction.response.send_message("`[ERR]` Уже в быстром доступе!", ephemeral=True)
+            return
+        p['быстрый_доступ'].append(номер - 1)
+        save_characters(персонажи)
+        await interaction.response.send_message(f"`[SYS]` **{сп[номер - 1]['название'].title()}** в быстром доступе! ⚡")
+
+    elif действие == "из_бд":
+        if not номер:
+            await interaction.response.send_message("`[ERR]` Укажи номер оружия!", ephemeral=True)
+            return
+        ибд = индекс_в_бд(номер)
+        if ибд < 0:
+            await interaction.response.send_message("`[ERR]` Не в быстром доступе!", ephemeral=True)
+            return
+        p['быстрый_доступ'].pop(ибд)
+        save_characters(персонажи)
+        await interaction.response.send_message(f"`[SYS]` **{сп[номер - 1]['название'].title()}** убран из быстрого доступа.")
 
 # ==========================================
 # БРОНЯ
@@ -900,6 +1037,215 @@ async def броня(interaction: discord.Interaction, действие: str, н
                 save_characters(персонажи)
                 await interaction.response.send_message(f"`[SYS]` **{предмет['название'].title()}** снят и возвращён в инвентарь.")
                 return
+
+# ==========================================
+# КИБЕРИМПЛАНТЫ
+# ==========================================
+@bot.tree.command(name="кибер", description="Управление киберимплантами")
+@app_commands.autocomplete(предмет=автодополнение_имплантов)
+@app_commands.describe(действие="Что сделать", предмет="Номер (для продажи) или название (для покупки)")
+@app_commands.choices(действие=[
+    app_commands.Choice(name="список", value="список"),
+    app_commands.Choice(name="купить", value="купить"),
+    app_commands.Choice(name="продать", value="продать"),
+])
+async def кибер(interaction: discord.Interaction, действие: str, предмет: str = None):
+    персонажи = load_characters()
+    автор_id = str(interaction.user.id)
+    if автор_id not in персонажи:
+        await interaction.response.send_message("`[ERR]` Создай персонажа!", ephemeral=True)
+        return
+    p = персонажи[автор_id]
+    if 'киберимпланты' not in p: p['киберимпланты'] = []
+    if 'установлено_импланты' not in p: p['установлено_импланты'] = []
+
+    if действие == "список":
+        if not p['киберимпланты'] and not p['установлено_импланты']:
+            await interaction.response.send_message("🔌 Киберимпланты: пусто")
+            return
+        строки = ["**🔌 Киберимпланты:**"]
+        номер = 1
+        for item in p['киберимпланты']:
+            строки.append(f"{номер}. ▸ {item['название'].title()} ({item['шаблон']['эффект']})")
+            номер += 1
+        for слот, импланты in p['установлено_импланты'].items():
+            for item in импланты:
+                строки.append(f"{номер}. ⚡ {item['название'].title()} (Установлен: {слот}) — {item['шаблон']['эффект']}")
+                номер += 1
+        await interaction.response.send_message('\n'.join(строки))
+
+    elif действие == "купить":
+        if not предмет:
+            await interaction.response.send_message("`[ERR]` Укажи название!", ephemeral=True)
+            return
+        шаблоны = load_cyberware()
+        if предмет not in шаблоны:
+            await interaction.response.send_message(f"`[ERR]` Доступные: {', '.join(шаблоны)}", ephemeral=True)
+            return
+        ш = шаблоны[предмет]
+        if p['эдди'] < ш['цена']:
+            await interaction.response.send_message(f"`[ERR]` {ш['цена']} эдди! У тебя {p['эдди']}.", ephemeral=True)
+            return
+        p['эдди'] -= ш['цена']
+        p['киберимпланты'].append({"название": предмет, "шаблон": copy.deepcopy(ш)})
+        save_characters(персонажи)
+        await interaction.response.send_message(f"`[€$]` **{предмет}** куплен за {ш['цена']} эдди!\nЭффект: {ш['эффект']} | Слот: {ш['слот']} | Осталось: {p['эдди']}")
+
+    elif действие == "продать":
+        if not предмет:
+            await interaction.response.send_message("`[ERR]` Укажи номер из списка!", ephemeral=True)
+            return
+        try: номер = int(предмет)
+        except:
+            await interaction.response.send_message("`[ERR]` Нужно число!", ephemeral=True)
+            return
+        общий = list(p['киберимпланты'])
+        for импланты in p['установлено_импланты'].values():
+            общий.extend(импланты)
+        if номер < 1 or номер > len(общий):
+            await interaction.response.send_message(f"`[ERR]` №{номер} не найден!", ephemeral=True)
+            return
+        продан = общий[номер - 1]
+        if продан in p['киберимпланты']:
+            p['киберимпланты'].remove(продан)
+        else:
+            for импланты in p['установлено_импланты'].values():
+                if продан in импланты:
+                    импланты.remove(продан)
+                    break
+        цена = int(продан['шаблон']['цена'] * 0.1)
+        p['эдди'] += цена
+        save_characters(персонажи)
+        await interaction.response.send_message(f"`[€$]` **{продан['название'].title()}** продан за {цена} эдди. Баланс: **{p['эдди']}**")
+
+
+# ==========================================
+# УСТАНОВИТЬ/СНЯТЬ КИБЕРИМПЛАНТ
+# ==========================================
+@bot.tree.command(name="установить_кибер", description="Установить или снять киберимплант")
+@app_commands.describe(действие="Что сделать", номер="Номер из /кибер список")
+@app_commands.choices(действие=[
+    app_commands.Choice(name="установить", value="установить"),
+    app_commands.Choice(name="снять", value="снять"),
+])
+async def установить_кибер(interaction: discord.Interaction, действие: str, номер: int):
+    персонажи = load_characters()
+    автор_id = str(interaction.user.id)
+    if автор_id not in персонажи:
+        await interaction.response.send_message("`[ERR]` Создай персонажа!", ephemeral=True)
+        return
+    p = персонажи[автор_id]
+    if 'киберимпланты' not in p: p['киберимпланты'] = []
+    if 'установлено_импланты' not in p: p['установлено_импланты'] = []
+
+    if действие == "установить":
+        if номер < 1 or номер > len(p['киберимпланты']):
+            await interaction.response.send_message(f"`[ERR]` №{номер} не найден в инвентаре!", ephemeral=True)
+            return
+        имп = p['киберимпланты'][номер - 1]
+        слот = имп['шаблон']['слот']
+
+        # Проверка: это открывающий имплант?
+        if имп['шаблон'].get('открывает'):
+            открывает = имп['шаблон']['открывает']
+            лимит = имп['шаблон']['лимит']
+            if 'открытые_слоты' not in p: p['открытые_слоты'] = {}
+            if открывает in p['открытые_слоты']:
+                await interaction.response.send_message(f"`[ERR]` Слот «{открывает}» уже открыт!", ephemeral=True)
+                return
+            p['открытые_слоты'][открывает] = лимит
+            if 'установлено_импланты' not in p: p['установлено_импланты'] = {}
+            if открывает not in p['установлено_импланты']:
+                p['установлено_импланты'][открывает] = []
+            p['киберимпланты'].remove(имп)
+            save_characters(персонажи)
+            await interaction.response.send_message(f"`[SYS]` **{имп['название'].title()}** активирован! Слот «{открывает}» открыт ({лимит} мест). ⚡")
+            return
+
+        # Проверка: это борг-имплант?
+        if имп['шаблон'].get('борг_слота'):
+            борг_слот = имп['шаблон']['борг_слота']
+            if борг_слот not in p.get('открытые_слоты', {}):
+                await interaction.response.send_message(f"`[ERR]` Слот «{борг_слот}» не открыт! Сначала установи открывающий имплант.", ephemeral=True)
+                return
+            if f"борг_{борг_слот}" in p.get('открытые_слоты', {}):
+                await interaction.response.send_message(f"`[ERR]` Борг-имплант для «{борг_слот}» уже установлен!", ephemeral=True)
+                return
+            p['открытые_слоты'][борг_слот] += имп['шаблон']['добавляет_слотов']
+            p['открытые_слоты'][f"борг_{борг_слот}"] = True
+            p['киберимпланты'].remove(имп)
+            save_characters(персонажи)
+            await interaction.response.send_message(f"`[SYS]` **{имп['название'].title()}** активирован! Слот «{борг_слот}» расширен (+{имп['шаблон']['добавляет_слотов']} места). ⚡")
+            return
+
+        # Проверка: слот открыт?
+        лимиты = {"стилевые": 3, "внутренние": 3, "внешние": 3}
+        if слот in p.get('открытые_слоты', {}):
+            лимит = p['открытые_слоты'][слот]
+        elif слот in лимиты:
+            лимит = лимиты[слот]
+        else:
+            await interaction.response.send_message(f"`[ERR]` Слот «{слот}» закрыт! Сначала установи открывающий имплант.", ephemeral=True)
+            return
+
+        # Проверка: не дубликат?
+        for уст in p['установлено_импланты'].get(слот, []):
+            if уст['название'] == имп['название']:
+                await interaction.response.send_message(f"`[ERR]` **{имп['название'].title()}** уже установлен в этот слот!", ephemeral=True)
+                return
+
+        if len(p['установлено_импланты'].get(слот, [])) >= лимит:
+            await interaction.response.send_message(f"`[ERR]` Слот «{слот}» заполнен (макс: {лимит})!", ephemeral=True)
+            return
+
+        p['киберимпланты'].remove(имп)
+        if слот not in p['установлено_импланты']:
+            p['установлено_импланты'][слот] = []
+        p['установлено_импланты'][слот].append(имп)
+        save_characters(персонажи)
+        await interaction.response.send_message(f"`[SYS]` **{имп['название'].title()}** установлен в слот «{слот}»! ⚡")
+
+    elif действие == "снять":
+        # Ищем по номеру среди всех установленных
+        все_уст = []
+        for слот, импланты in p['установлено_импланты'].items():
+            for имп in импланты:
+                все_уст.append((слот, имп))
+        if номер < 1 or номер > len(все_уст):
+            await interaction.response.send_message(f"`[ERR]` №{номер} не найден среди установленных!", ephemeral=True)
+            return
+        слот, имп = все_уст[номер - 1]
+        p['установлено_импланты'][слот].remove(имп)
+        p['киберимпланты'].append(имп)
+        save_characters(персонажи)
+        await interaction.response.send_message(f"`[SYS]` **{имп['название'].title()}** снят и возвращён в инвентарь.")
+
+
+# ==========================================
+# ВЫДАТЬ КИБЕРИМПЛАНТ
+# ==========================================
+@bot.tree.command(name="выдать_кибер", description="[Гейммастер] Выдать киберимплант")
+@app_commands.autocomplete(предмет=автодополнение_имплантов)
+@app_commands.describe(игрок="Кому", предмет="Название")
+async def выдать_кибер(interaction: discord.Interaction, игрок: discord.Member, предмет: str):
+    if "Гейммастер" not in [р.name for р in interaction.user.roles]:
+        await interaction.response.send_message("`[ERR]` Только Гейммастер!", ephemeral=True)
+        return
+    персонажи = load_characters()
+    цель_id = str(игрок.id)
+    if цель_id not in персонажи:
+        await interaction.response.send_message("`[ERR]` Нет персонажа!", ephemeral=True)
+        return
+    шаблоны = load_cyberware()
+    if предмет not in шаблоны:
+        await interaction.response.send_message(f"`[ERR]` Доступные: {', '.join(шаблоны)}", ephemeral=True)
+        return
+    p = персонажи[цель_id]
+    if 'киберимпланты' not in p: p['киберимпланты'] = []
+    p['киберимпланты'].append({"название": предмет, "шаблон": copy.deepcopy(шаблоны[предмет])})
+    save_characters(персонажи)
+    ш = шаблоны[предмет]
+    await interaction.response.send_message(f"`[SYS]` {игрок.mention} получил **{предмет.title()}**!\nЭффект: {ш['эффект']} | Слот: {ш['слот']}")
 
 # ==========================================
 # ВЫДАТЬ БРОНЮ
@@ -1114,55 +1460,6 @@ async def выдать_обвес(interaction: discord.Interaction, игрок: 
     await interaction.response.send_message(f"`[SYS]` {игрок.mention} получил **{обвес}**!\n{д['эффект']} | Цена: {д['цена']}")
 
 # ==========================================
-# ЭКИПИРОВАТЬ
-# ==========================================
-@bot.tree.command(name="экипировать", description="Взять оружие в руки")
-@app_commands.describe(оружие_номер="Номер из /оружие список", рука="В какую руку")
-@app_commands.choices(рука=[
-    app_commands.Choice(name="правая", value="правая"),
-    app_commands.Choice(name="левая", value="левая"),
-    app_commands.Choice(name="обе", value="обе"),
-])
-async def экипировать(interaction: discord.Interaction, оружие_номер: int, рука: str = "правая"):
-    персонажи = load_characters()
-    автор_id = str(interaction.user.id)
-    if автор_id not in персонажи:
-        await interaction.response.send_message("`[ERR]` Создай персонажа!", ephemeral=True)
-        return
-    p = персонажи[автор_id]
-    сп = p.get('оружие', [])
-    if not сп:
-        await interaction.response.send_message("Нет оружия!", ephemeral=True)
-        return
-    if оружие_номер < 1 or оружие_номер > len(сп):
-        await interaction.response.send_message("`[ERR]` Не найден!", ephemeral=True)
-        return
-    оруж = сп[оружие_номер - 1]
-    рук = оруж['шаблон'].get('рук', 1)
-    if 'руки' not in p: p['руки'] = {"правая": None, "левая": None}
-    if рук == 2:
-        if рука != "обе":
-            await interaction.response.send_message("`[ERR]` Двуручное — выбери «обе»!", ephemeral=True)
-            return
-        p['руки']['правая'] = оружие_номер - 1
-        p['руки']['левая'] = оружие_номер - 1
-    else:
-        if рука == "обе":
-            await interaction.response.send_message("`[ERR]` Одноручное — выбери руку!", ephemeral=True)
-            return
-        тек = p['руки'][рука]
-        if тек is not None and тек < len(сп) and сп[тек]['шаблон'].get('рук', 1) == 2:
-            p['руки']['правая'] = None
-            p['руки']['левая'] = None
-        p['руки'][рука] = оружие_номер - 1
-    save_characters(персонажи)
-    стр = []
-    for r in ["правая", "левая"]:
-        idx = p['руки'][r]
-        стр.append(f"{r}: **{сп[idx]['название'].title()}**" if idx is not None and idx < len(сп) else f"{r}: пусто")
-    await interaction.response.send_message(f"`[SYS]` {interaction.user.mention}:\n" + '\n'.join(стр))
-
-# ==========================================
 # НАДЕТЬ СНАРЯЖЕНИЕ
 # ==========================================
 @bot.tree.command(name="надеть", description="Надеть или снять предмет снаряжения")
@@ -1307,12 +1604,13 @@ async def выдать(interaction: discord.Interaction, игрок: discord.Mem
 # УДАЛИТЬ ВЕЩЬ (ГМ)
 # ==========================================
 @bot.tree.command(name="удалить_вещь", description="[Гейммастер] Удалить вещь у игрока")
-@app_commands.describe(игрок="У кого", тип="Что удалить", номер="Номер (оружие/обвес) или название (снаряжение)")
+@app_commands.describe(игрок="У кого", тип="Что удалить", номер="Номер")
 @app_commands.choices(тип=[
     app_commands.Choice(name="снаряжение", value="снаряжение"),
     app_commands.Choice(name="оружие", value="оружие"),
     app_commands.Choice(name="обвес", value="обвес"),
     app_commands.Choice(name="броня", value="броня"),
+    app_commands.Choice(name="киберимплант", value="кибер"),
 ])
 async def удалить_вещь(interaction: discord.Interaction, игрок: discord.Member, тип: str, номер: str = None):
     if "Гейммастер" not in [р.name for р in interaction.user.roles]:
@@ -1329,22 +1627,17 @@ async def удалить_вещь(interaction: discord.Interaction, игрок: 
         if not номер:
             await interaction.response.send_message("`[ERR]` Укажи номер из списка снаряжения!", ephemeral=True)
             return
-        try:
-            n = int(номер)
+        try: n = int(номер)
         except:
-            await interaction.response.send_message("`[ERR]` Нужно число — номер из `/снаряжение список`!", ephemeral=True)
+            await interaction.response.send_message("`[ERR]` Нужно число!", ephemeral=True)
             return
-        
         общий = p.get('снаряжение', []) + p.get('надетое_снаряжение', [])
         if n < 1 or n > len(общий):
-            await interaction.response.send_message(f"`[ERR]` №{n} не найден! Всего: {len(общий)}.", ephemeral=True)
+            await interaction.response.send_message(f"`[ERR]` №{n} не найден!", ephemeral=True)
             return
-        
         удалено = общий[n - 1]
-        if удалено in p.get('снаряжение', []):
-            p['снаряжение'].remove(удалено)
-        else:
-            p.get('надетое_снаряжение', []).remove(удалено)
+        if удалено in p.get('снаряжение', []): p['снаряжение'].remove(удалено)
+        else: p.get('надетое_снаряжение', []).remove(удалено)
         save_characters(персонажи)
         await interaction.response.send_message(f"`[SYS]` **{удалено}** удалён у {игрок.mention}.")
 
@@ -1352,14 +1645,13 @@ async def удалить_вещь(interaction: discord.Interaction, игрок: 
         if not номер:
             await interaction.response.send_message("`[ERR]` Укажи номер оружия!", ephemeral=True)
             return
-        try:
-            n = int(номер)
+        try: n = int(номер)
         except:
-            await interaction.response.send_message("`[ERR]` Нужно число — номер из `/оружие список`!", ephemeral=True)
+            await interaction.response.send_message("`[ERR]` Нужно число!", ephemeral=True)
             return
         сп = p.get('оружие', [])
         if n < 1 or n > len(сп):
-            await interaction.response.send_message(f"`[ERR]` №{n} не найден! Всего: {len(сп)}.", ephemeral=True)
+            await interaction.response.send_message(f"`[ERR]` №{n} не найден!", ephemeral=True)
             return
         удалено = сп.pop(n - 1)
         save_characters(персонажи)
@@ -1369,14 +1661,13 @@ async def удалить_вещь(interaction: discord.Interaction, игрок: 
         if not номер:
             await interaction.response.send_message("`[ERR]` Укажи номер обвеса!", ephemeral=True)
             return
-        try:
-            n = int(номер)
+        try: n = int(номер)
         except:
-            await interaction.response.send_message("`[ERR]` Нужно число — номер из `/обвес мой инвентарь`!", ephemeral=True)
+            await interaction.response.send_message("`[ERR]` Нужно число!", ephemeral=True)
             return
         инв = p.get('инвентарь_обвесов', [])
         if n < 1 or n > len(инв):
-            await interaction.response.send_message(f"`[ERR]` №{n} не найден! Всего: {len(инв)}.", ephemeral=True)
+            await interaction.response.send_message(f"`[ERR]` №{n} не найден!", ephemeral=True)
             return
         удалено = инв.pop(n - 1)
         save_characters(персонажи)
@@ -1386,8 +1677,7 @@ async def удалить_вещь(interaction: discord.Interaction, игрок: 
         if not номер:
             await interaction.response.send_message("`[ERR]` Укажи номер брони!", ephemeral=True)
             return
-        try:
-            n = int(номер)
+        try: n = int(номер)
         except:
             await interaction.response.send_message("`[ERR]` Нужно число!", ephemeral=True)
             return
@@ -1396,8 +1686,7 @@ async def удалить_вещь(interaction: discord.Interaction, игрок: 
             await interaction.response.send_message(f"`[ERR]` №{n} не найден!", ephemeral=True)
             return
         удалено = общий[n - 1]
-        if удалено in p.get('броня', []):
-            p['броня'].remove(удалено)
+        if удалено in p.get('броня', []): p['броня'].remove(удалено)
         else:
             for слот in p.get('надето_броня', {}):
                 if p['надето_броня'][слот] == удалено:
@@ -1406,6 +1695,30 @@ async def удалить_вещь(interaction: discord.Interaction, игрок: 
         save_characters(персонажи)
         await interaction.response.send_message(f"`[SYS]` **{удалено['название']}** удалён у {игрок.mention}.")
 
+    elif тип == "кибер":
+        if not номер:
+            await interaction.response.send_message("`[ERR]` Укажи номер!", ephemeral=True)
+            return
+        try: n = int(номер)
+        except:
+            await interaction.response.send_message("`[ERR]` Нужно число!", ephemeral=True)
+            return
+        общий = list(p.get('киберимпланты', []))
+        for импланты in p.get('установлено_импланты', {}).values():
+            общий.extend(импланты)
+        if n < 1 or n > len(общий):
+            await interaction.response.send_message(f"`[ERR]` №{n} не найден!", ephemeral=True)
+            return
+        удалено = общий[n - 1]
+        if удалено in p.get('киберимпланты', []):
+            p['киберимпланты'].remove(удалено)
+        else:
+            for импланты in p.get('установлено_импланты', {}).values():
+                if удалено in импланты:
+                    импланты.remove(удалено)
+                    break
+        save_characters(персонажи)
+        await interaction.response.send_message(f"`[SYS]` **{удалено['название']}** удалён у {игрок.mention}.")
 # ==========================================
 # КУБИК
 # ==========================================
